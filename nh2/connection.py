@@ -24,14 +24,15 @@ class Connection:
         self.c.initiate_connection()
         self.flush()
 
-    def request(self, method, path):  # pylint: disable=missing-function-docstring
-        headers = [
-            (':method', method),
-            (':path', path),
-            (':authority', self.host),
-            (':scheme', 'https'),
-        ]
-        self.c.send_headers(1, headers, end_stream=True)
+    def request(self, method, path):
+        """Send a method request for path."""
+
+        return self.send(Request(method, self.host, path))
+
+    def send(self, request):
+        """Send the given Request."""
+
+        self.c.send_headers(1, request.headers, end_stream=True)
         self.flush()
 
     def read(self):  # pylint: disable=missing-function-docstring
@@ -73,3 +74,18 @@ class Connection:
         self.c.close_connection()
         self.flush()
         self.s.close()
+
+
+class Request:
+    """A unique request."""
+
+    def __init__(self, method, host, path):
+        self.method = method
+        self.host = host
+        self.path = path
+        self.headers = [
+            (':method', method),
+            (':path', path),
+            (':authority', host),
+            (':scheme', 'https'),
+        ]

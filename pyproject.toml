@@ -22,6 +22,11 @@ dev = [
 Homepage = 'https://github.com/nmlorg/nh2'
 Issues = 'https://github.com/nmlorg/nh2/issues'
 
+[tool.pylint.'MESSAGES CONTROL']
+disable = [
+    'too-few-public-methods',
+]
+
 [tool.pytest.ini_options]
 addopts = '-rN --cov=nh2 --cov-report=html'
 consider_namespace_packages = true
