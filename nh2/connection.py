@@ -1,3 +1,5 @@
+"""An HTTP/2 connection."""
+
 import socket
 import ssl
 
@@ -15,6 +17,7 @@ ctx.set_alpn_protocols(['h2'])
 
 
 class Connection:
+    """An HTTP/2 connection."""
 
     def __init__(self):
         sock = socket.create_connection((SERVER_NAME, SERVER_PORT))
@@ -22,9 +25,9 @@ class Connection:
 
         self.c = h2.connection.H2Connection()
         self.c.initiate_connection()
-        self.s.sendall(self.c.data_to_send())
+        self.flush()
 
-    def send(self):
+    def send(self):  # pylint: disable=missing-function-docstring
         headers = [
             (':method', 'GET'),
             (':path', '/reqinfo'),
@@ -32,9 +35,9 @@ class Connection:
             (':scheme', 'https'),
         ]
         self.c.send_headers(1, headers, end_stream=True)
-        self.s.sendall(self.c.data_to_send())
+        self.flush()
 
-    def read(self):
+    def read(self):  # pylint: disable=missing-function-docstring
         body = b''
         response_stream_ended = False
         while not response_stream_ended:
@@ -56,17 +59,20 @@ class Connection:
                     # response body completed, let's exit the loop
                     response_stream_ended = True
                     break
-            # send any pending data to the server
-            self.s.sendall(self.c.data_to_send())
+            self.flush()
 
         print("Response fully received:")
         print(body.decode())
         return body.decode()
 
-    def close(self):
-        # tell the server we are closing the h2 connection
-        self.c.close_connection()
+    def flush(self):
+        """Send any pending data to the server."""
+
         self.s.sendall(self.c.data_to_send())
 
-        # close the socket
+    def close(self):
+        """Close the HTTP/2 connection, TLS session, and TCP socket."""
+
+        self.c.close_connection()
+        self.flush()
         self.s.close()
