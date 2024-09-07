@@ -6,9 +6,9 @@ from nh2 import connection
 def test_simple():
     """Basic functionality."""
 
-    conn = connection.Connection()
+    conn = connection.Connection('http2.golang.org', 443)
     try:
-        conn.send()
+        conn.request('GET', '/reqinfo')
         assert conn.read() == '<a href="https://go.dev/reqinfo">Found</a>.\n\n'
     finally:
         conn.close()

@@ -7,10 +7,6 @@ import certifi
 import h2.connection
 import h2.events
 
-SERVER_NAME = 'http2.golang.org'
-SERVER_PORT = 443
-
-# generic socket and ssl configuration
 socket.setdefaulttimeout(15)
 ctx = ssl.create_default_context(cafile=certifi.where())
 ctx.set_alpn_protocols(['h2'])
@@ -19,19 +15,20 @@ ctx.set_alpn_protocols(['h2'])
 class Connection:
     """An HTTP/2 connection."""
 
-    def __init__(self):
-        sock = socket.create_connection((SERVER_NAME, SERVER_PORT))
-        self.s = ctx.wrap_socket(sock, server_hostname=SERVER_NAME)
+    def __init__(self, host, port):
+        self.host = host
+        sock = socket.create_connection((host, port))
+        self.s = ctx.wrap_socket(sock, server_hostname=host)
 
         self.c = h2.connection.H2Connection()
         self.c.initiate_connection()
         self.flush()
 
-    def send(self):  # pylint: disable=missing-function-docstring
+    def request(self, method, path):  # pylint: disable=missing-function-docstring
         headers = [
-            (':method', 'GET'),
-            (':path', '/reqinfo'),
-            (':authority', SERVER_NAME),
+            (':method', method),
+            (':path', path),
+            (':authority', self.host),
             (':scheme', 'https'),
         ]
         self.c.send_headers(1, headers, end_stream=True)
