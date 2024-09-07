@@ -1,0 +1,7 @@
+/*.egg-info/
+/.pytest_cache/
+/.tox/
+/.venv/
+/dist/
+/.coverage
+__pycache__/

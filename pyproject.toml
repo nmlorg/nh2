@@ -1,0 +1,36 @@
+[project]
+name = 'nh2'
+version = '0.0.0'
+description = 'A simple HTTP/2 connection manager.'
+authors = [
+    {name = 'Daniel Reed', email = 'nmlorg@gmail.com'},
+]
+requires-python = '>=3.8'
+dependencies = [
+    'certifi',
+    'h2',
+]
+
+[project.optional-dependencies]
+dev = [
+    'pylint',
+    'pytest-cov',
+    'pytest',
+]
+
+[project.urls]
+Homepage = 'https://github.com/nmlorg/nh2'
+Issues = 'https://github.com/nmlorg/nh2/issues'
+
+[tool.pytest.ini_options]
+addopts = '-rN --cov=nh2 --cov-report=html'
+consider_namespace_packages = true
+testpaths = ['nh2']
+verbosity_assertions = 2
+
+[tool.setuptools.packages.find]
+include = ['nh2', 'nh2.*']
+
+[tool.yapf]
+based_on_style = 'google'
+column_limit = 100
