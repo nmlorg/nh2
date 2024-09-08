@@ -8,12 +8,13 @@ class Request:
         self.method = method
         self.host = host
         self.path = path
-        self.headers = (
-            (':method', method),
-            (':path', path),
-            (':authority', host),
-            (':scheme', 'https'),
-        ) + tuple(headers)
+        self.headers = {
+            ':method': method,
+            ':path': path,
+            ':authority': host,
+            ':scheme': 'https',
+        }
+        self.headers.update(headers)
         if isinstance(body, str):
             body = body.encode('utf8')
         self.body = body or b''

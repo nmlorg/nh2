@@ -105,7 +105,9 @@ class LiveRequest:
         """Send the request's headers."""
 
         end_stream = not self.tosend
-        self.connection.c.send_headers(self.stream_id, self.request.headers, end_stream=end_stream)
+        self.connection.c.send_headers(self.stream_id,
+                                       self.request.headers.items(),
+                                       end_stream=end_stream)
         if end_stream:
             self.connection.flush()
 

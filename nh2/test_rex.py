@@ -10,12 +10,12 @@ def test_request_simple():
     assert request.method == 'PUT'
     assert request.host == 'example.com'
     assert request.path == '/test'
-    assert request.headers == (
-        (':method', 'PUT'),
-        (':path', '/test'),
-        (':authority', 'example.com'),
-        (':scheme', 'https'),
-    )
+    assert request.headers == {
+        ':method': 'PUT',
+        ':path': '/test',
+        ':authority': 'example.com',
+        ':scheme': 'https',
+    }
     assert request.body == b''
 
 
