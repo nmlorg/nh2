@@ -26,10 +26,10 @@ class Connection:
 
         self.streams = {}
 
-    def request(self, method, path):
+    def request(self, method, path, headers=(), body=None):
         """Send a method request for path."""
 
-        return self.send(Request(method, self.host, path))
+        return self.send(Request(method, self.host, path, headers, body))
 
     def send(self, request):
         """Send the given Request."""
@@ -58,6 +58,10 @@ class Connection:
                 self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
                 live_request = self.streams[event.stream_id]
                 live_request.receive(event.data)
+            elif isinstance(event, h2.events.WindowUpdated):
+                if event.stream_id:
+                    live_request = self.streams[event.stream_id]
+                    live_request.send()
             elif isinstance(event, h2.events.StreamEnded):
                 live_request = self.streams.pop(event.stream_id)
                 responses.append(live_request.ended())
@@ -80,16 +84,19 @@ class Connection:
 class Request:
     """A unique request."""
 
-    def __init__(self, method, host, path):
+    def __init__(self, method, host, path, headers, body):  # pylint: disable=too-many-arguments
         self.method = method
         self.host = host
         self.path = path
-        self.headers = [
+        self.headers = (
             (':method', method),
             (':path', path),
             (':authority', host),
             (':scheme', 'https'),
-        ]
+        ) + tuple(headers)
+        if isinstance(body, str):
+            body = body.encode('utf8')
+        self.body = body or b''
 
 
 class Response:
@@ -108,13 +115,28 @@ class LiveRequest:
         self.stream_id = connection.new_stream(self)
         self.request = request
         self.received = []
+        self.tosend = request.body
         self.send_headers()
+        self.send()
 
     def send_headers(self):
         """Send the request's headers."""
 
-        self.connection.c.send_headers(self.stream_id, self.request.headers, end_stream=True)
-        self.connection.flush()
+        end_stream = not self.tosend
+        self.connection.c.send_headers(self.stream_id, self.request.headers, end_stream=end_stream)
+        if end_stream:
+            self.connection.flush()
+
+    def send(self):
+        """Send as much of the request's body as the stream's window allows."""
+
+        while self.tosend and (window := self.connection.c.local_flow_control_window(
+                self.stream_id)):
+            limit = min(window, self.connection.c.max_outbound_frame_size)
+            data = self.tosend[:limit]
+            self.tosend = self.tosend[limit:]
+            self.connection.c.send_data(self.stream_id, data, end_stream=not self.tosend)
+            self.connection.flush()
 
     def receive(self, data):
         """Store data received by a DataReceived."""
