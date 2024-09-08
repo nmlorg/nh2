@@ -30,10 +30,11 @@ class Connection:
 
         self.streams = {}
 
-    def request(self, method, path, *, headers=(), body=None):
+    def request(self, method, path, *, headers=(), body=None, json=None):  # pylint: disable=too-many-arguments
         """Send a method request for path."""
 
-        return self.send(nh2.rex.Request(method, self.host, path, headers=headers, body=body))
+        return self.send(
+            nh2.rex.Request(method, self.host, path, headers=headers, body=body, json=json))
 
     def send(self, request):
         """Send the given Request."""

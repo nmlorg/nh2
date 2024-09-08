@@ -1,5 +1,7 @@
 """HTTP/2 requests and responses."""
 
+import json as _json
+
 
 class ContentType:
     """A structured view of the content-type header."""
@@ -25,7 +27,7 @@ class ContentType:
 class Request:
     """An HTTP/2 request."""
 
-    def __init__(self, method, host, path, *, headers=(), body=None):  # pylint: disable=too-many-arguments
+    def __init__(self, method, host, path, *, headers=(), body=None, json=None):  # pylint: disable=too-many-arguments
         self.method = method
         self.host = host
         self.path = path
@@ -37,6 +39,11 @@ class Request:
         }
         self.headers.update(headers)
         self.contenttype = ContentType(self.headers.get('content-type', ''))
+        if json is not None:
+            assert not body
+            assert self.contenttype.mediatype is None
+            self.contenttype = ContentType('application/json')
+            body = _json.dumps(json, separators=(',', ':'))
         if body and isinstance(body, str):
             assert self.contenttype.charset is None
             if self.contenttype.mediatype is None:
@@ -57,3 +64,8 @@ class Response:
         self.status = int(headers[':status'])
         self.contenttype = ContentType(headers.get('content-type', ''))
         self.body = body
+
+    def json(self):
+        """Parse (and return) self.body as a JSON object."""
+
+        return _json.loads(self.body)

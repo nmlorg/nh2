@@ -1,7 +1,5 @@
 """Tests for nh2.connection."""
 
-import json
-
 import nh2.connection
 import nh2.rex
 
@@ -19,10 +17,10 @@ def test_simple():
         assert len(responses) == 1
         assert responses[0].status == 200
         assert responses[0].headers['content-type'] == 'application/json'
-        response = json.loads(responses[0].body)
+        response = responses[0].json()
         assert response['args'] == {'a': 'b'}
 
-        conn.request('POST', '/post', body='{"c": "d"}')
+        conn.request('POST', '/post', json={'c': 'd'})
         responses = None
         while not responses:
             responses = conn.read()
@@ -30,7 +28,7 @@ def test_simple():
         assert len(responses) == 1
         assert responses[0].status == 200
         assert responses[0].headers['content-type'] == 'application/json'
-        response = json.loads(responses[0].body)
+        response = responses[0].json()
         assert response['json'] == {'c': 'd'}
     finally:
         conn.close()

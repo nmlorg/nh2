@@ -60,6 +60,14 @@ def test_request_simple():
     assert request.body == b'\xe2\x80\xa2'
 
 
+def test_request_json():
+    """Verify JSON-related logic."""
+
+    request = nh2.rex.Request('PUT', 'example.com', '/test', json={'a': '\u2022'})
+    assert request.contenttype.mediatype == 'application/json'
+    assert request.body == b'{"a":"\\u2022"}'
+
+
 def test_response_simple():
     """Basic Response functionality."""
 
@@ -72,3 +80,12 @@ def test_response_simple():
     assert response.contenttype.charset is None
     assert response.contenttype.boundary is None
     assert response.body == b''
+
+
+def test_response_json():
+    """Verify JSON-related logic."""
+
+    request = nh2.rex.Request('PUT', 'example.com', '/test')
+    response = nh2.rex.Response(request, {':status': '200'}, b'{"a": "\\u2022 \xe2\x80\xa2"}')
+    assert response.body == b'{"a": "\\u2022 \xe2\x80\xa2"}'
+    assert response.json() == {'a': '\u2022 \u2022'}
