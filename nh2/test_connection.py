@@ -2,13 +2,14 @@
 
 import json
 
-from nh2 import connection
+import nh2.connection
+import nh2.rex
 
 
 def test_simple():
     """Basic functionality."""
 
-    conn = connection.Connection('httpbin.org', 443)
+    conn = nh2.connection.Connection('httpbin.org', 443)
     try:
         conn.request('GET', '/get?a=b')
         responses = None
@@ -68,9 +69,9 @@ def test_LiveRequest_send():  # pylint: disable=invalid-name
             pass
 
     conn = MockConnection()
-    request = connection.Request('POST', 'example.com', '/data', (), '555557777777333')
+    request = nh2.rex.Request('POST', 'example.com', '/data', (), '555557777777333')
 
-    live_request = connection.LiveRequest(conn, request)
+    live_request = nh2.connection.LiveRequest(conn, request)
     assert conn.c.window == 0
     assert conn.c.sent == [b'55555']
     assert live_request.tosend == b'7777777333'

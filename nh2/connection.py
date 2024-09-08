@@ -8,6 +8,8 @@ import h2.config
 import h2.connection
 import h2.events
 
+import nh2.rex
+
 socket.setdefaulttimeout(15)
 ctx = ssl.create_default_context(cafile=certifi.where())
 ctx.set_alpn_protocols(['h2'])
@@ -31,7 +33,7 @@ class Connection:
     def request(self, method, path, headers=(), body=None):
         """Send a method request for path."""
 
-        return self.send(Request(method, self.host, path, headers, body))
+        return self.send(nh2.rex.Request(method, self.host, path, headers, body))
 
     def send(self, request):
         """Send the given Request."""
@@ -86,34 +88,6 @@ class Connection:
         self.s.close()
 
 
-class Request:
-    """A unique request."""
-
-    def __init__(self, method, host, path, headers, body):  # pylint: disable=too-many-arguments
-        self.method = method
-        self.host = host
-        self.path = path
-        self.headers = (
-            (':method', method),
-            (':path', path),
-            (':authority', host),
-            (':scheme', 'https'),
-        ) + tuple(headers)
-        if isinstance(body, str):
-            body = body.encode('utf8')
-        self.body = body or b''
-
-
-class Response:
-    """A response."""
-
-    def __init__(self, request, headers, body):
-        self.request = request
-        self.headers = headers
-        self.status = int(headers[':status'])
-        self.body = body
-
-
 class LiveRequest:
     """A Request that's been sent over a Connection that hasn't received a StreamEnded yet."""
 
@@ -154,4 +128,5 @@ class LiveRequest:
     def ended(self):
         """Mark the request as being finalized."""
 
-        return Response(self.request, self.received_headers, b''.join(self.received).decode('utf8'))
+        return nh2.rex.Response(self.request, self.received_headers,
+                                b''.join(self.received).decode('utf8'))
