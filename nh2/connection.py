@@ -4,6 +4,7 @@ import socket
 import ssl
 
 import certifi
+import h2.config
 import h2.connection
 import h2.events
 
@@ -20,7 +21,8 @@ class Connection:
         sock = socket.create_connection((host, port))
         self.s = ctx.wrap_socket(sock, server_hostname=host)
 
-        self.c = h2.connection.H2Connection()
+        self.c = h2.connection.H2Connection(config=h2.config.H2Configuration(
+            header_encoding='utf8'))
         self.c.initiate_connection()
         self.flush()
 
@@ -58,6 +60,9 @@ class Connection:
                 self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
                 live_request = self.streams[event.stream_id]
                 live_request.receive(event.data)
+            elif isinstance(event, h2.events.ResponseReceived):
+                live_event = self.streams[event.stream_id]
+                live_event.received_headers = dict(event.headers)
             elif isinstance(event, h2.events.WindowUpdated):
                 if event.stream_id:
                     live_request = self.streams[event.stream_id]
@@ -102,8 +107,10 @@ class Request:
 class Response:
     """A response."""
 
-    def __init__(self, request, body):
+    def __init__(self, request, headers, body):
         self.request = request
+        self.headers = headers
+        self.status = int(headers[':status'])
         self.body = body
 
 
@@ -114,6 +121,7 @@ class LiveRequest:
         self.connection = connection
         self.stream_id = connection.new_stream(self)
         self.request = request
+        self.received_headers = None
         self.received = []
         self.tosend = request.body
         self.send_headers()
@@ -146,4 +154,4 @@ class LiveRequest:
     def ended(self):
         """Mark the request as being finalized."""
 
-        return Response(self.request, b''.join(self.received).decode('utf8'))
+        return Response(self.request, self.received_headers, b''.join(self.received).decode('utf8'))

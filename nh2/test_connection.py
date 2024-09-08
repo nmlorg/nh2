@@ -16,6 +16,8 @@ def test_simple():
             responses = conn.read()
         assert not conn.streams
         assert len(responses) == 1
+        assert responses[0].status == 200
+        assert responses[0].headers['content-type'] == 'application/json'
         response = json.loads(responses[0].body)
         assert response['args'] == {'a': 'b'}
 
@@ -25,6 +27,8 @@ def test_simple():
             responses = conn.read()
         assert not conn.streams
         assert len(responses) == 1
+        assert responses[0].status == 200
+        assert responses[0].headers['content-type'] == 'application/json'
         response = json.loads(responses[0].body)
         assert response['json'] == {'c': 'd'}
     finally:
