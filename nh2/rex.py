@@ -2,6 +2,8 @@
 
 
 class ContentType:
+    """A structured view of the content-type header."""
+
     def __init__(self, value=''):
         pieces = [piece.strip() for piece in value.split(';')]
         self.mediatype = pieces and pieces.pop(0) or None
@@ -23,7 +25,7 @@ class ContentType:
 class Request:
     """An HTTP/2 request."""
 
-    def __init__(self, method, host, path, headers, body):  # pylint: disable=too-many-arguments
+    def __init__(self, method, host, path, *, headers=(), body=None):  # pylint: disable=too-many-arguments
         self.method = method
         self.host = host
         self.path = path

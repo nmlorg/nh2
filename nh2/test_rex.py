@@ -28,7 +28,7 @@ def test_contenttype():
 def test_request_simple():
     """Basic Request functionality."""
 
-    request = nh2.rex.Request('PUT', 'example.com', '/test', (), '')
+    request = nh2.rex.Request('PUT', 'example.com', '/test')
     assert request.method == 'PUT'
     assert request.host == 'example.com'
     assert request.path == '/test'
@@ -43,7 +43,7 @@ def test_request_simple():
     assert request.contenttype.boundary is None
     assert request.body == b''
 
-    request = nh2.rex.Request('PUT', 'example.com', '/test', (), '\u2022')
+    request = nh2.rex.Request('PUT', 'example.com', '/test', body='\u2022')
     assert request.method == 'PUT'
     assert request.host == 'example.com'
     assert request.path == '/test'
@@ -63,7 +63,7 @@ def test_request_simple():
 def test_response_simple():
     """Basic Response functionality."""
 
-    request = nh2.rex.Request('PUT', 'example.com', '/test', (), '')
+    request = nh2.rex.Request('PUT', 'example.com', '/test')
     response = nh2.rex.Response(request, {':status': '200'}, b'')
     assert response.request is request
     assert response.headers == {':status': '200'}

@@ -30,10 +30,10 @@ class Connection:
 
         self.streams = {}
 
-    def request(self, method, path, headers=(), body=None):
+    def request(self, method, path, *, headers=(), body=None):
         """Send a method request for path."""
 
-        return self.send(nh2.rex.Request(method, self.host, path, headers, body))
+        return self.send(nh2.rex.Request(method, self.host, path, headers=headers, body=body))
 
     def send(self, request):
         """Send the given Request."""

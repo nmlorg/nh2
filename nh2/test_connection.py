@@ -22,7 +22,7 @@ def test_simple():
         response = json.loads(responses[0].body)
         assert response['args'] == {'a': 'b'}
 
-        conn.request('POST', '/post', [], '{"c": "d"}')
+        conn.request('POST', '/post', body='{"c": "d"}')
         responses = None
         while not responses:
             responses = conn.read()
@@ -69,7 +69,7 @@ def test_LiveRequest_send():  # pylint: disable=invalid-name
             pass
 
     conn = MockConnection()
-    request = nh2.rex.Request('POST', 'example.com', '/data', (), '555557777777333')
+    request = nh2.rex.Request('POST', 'example.com', '/data', body='555557777777333')
 
     live_request = nh2.connection.LiveRequest(conn, request)
     assert conn.c.window == 0
