@@ -69,7 +69,7 @@ class Connection:
             elif isinstance(event, h2.events.WindowUpdated):
                 if event.stream_id:
                     live_request = self.streams[event.stream_id]
-                    live_request.send()
+                    live_request.send_body()
             elif isinstance(event, h2.events.StreamEnded):
                 live_request = self.streams.pop(event.stream_id)
                 responses.append(live_request.ended())
@@ -100,7 +100,7 @@ class LiveRequest:
         self.received = []
         self.tosend = request.body
         self.send_headers()
-        self.send()
+        self.send_body()
 
     def send_headers(self):
         """Send the request's headers."""
@@ -112,7 +112,7 @@ class LiveRequest:
         if end_stream:
             self.connection.flush()
 
-    def send(self):
+    def send_body(self):
         """Send as much of the request's body as the stream's window allows."""
 
         while self.tosend and (window := self.connection.c.local_flow_control_window(

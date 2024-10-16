@@ -74,14 +74,14 @@ def test_LiveRequest_send():  # pylint: disable=invalid-name
     assert conn.c.sent == [b'55555']
     assert live_request.tosend == b'7777777333'
 
-    live_request.send()
+    live_request.send_body()
     assert conn.c.window == 0
     assert conn.c.sent == [b'55555']
     assert live_request.tosend == b'7777777333'
 
     conn.c.window = 100
 
-    live_request.send()
+    live_request.send_body()
     assert conn.c.window == 90
     assert conn.c.sent == [b'55555', b'7777777', b'333']
     assert live_request.tosend == b''
