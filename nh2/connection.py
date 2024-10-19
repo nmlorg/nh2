@@ -3,6 +3,7 @@
 import socket
 import ssl
 
+import anyio
 import certifi
 import h2.config
 import h2.connection
@@ -18,28 +19,32 @@ ctx.set_alpn_protocols(['h2'])
 class Connection:
     """An HTTP/2 connection."""
 
-    def __init__(self, host, port):
+    async def __new__(cls, host, port):  # pylint: disable=invalid-overridden-method
+        self = super().__new__(cls)
+        await self.__init__(host, port)
+        return self
+
+    async def __init__(self, host, port):
         self.host = host
-        sock = socket.create_connection((host, port))
-        self.s = ctx.wrap_socket(sock, server_hostname=host)
+        self.s = await anyio.connect_tcp(host, port, ssl_context=ctx, tls_standard_compatible=False)
 
         self.c = h2.connection.H2Connection(config=h2.config.H2Configuration(
             header_encoding='utf8'))
         self.c.initiate_connection()
-        self.flush()
+        await self.flush()
 
         self.streams = {}
 
-    def request(self, method, path, *, headers=(), body=None, json=None):  # pylint: disable=too-many-arguments
+    async def request(self, method, path, *, headers=(), body=None, json=None):  # pylint: disable=too-many-arguments
         """Send a method request for path."""
 
-        return self.send(
+        return await self.send(
             nh2.rex.Request(method, self.host, path, headers=headers, body=body, json=json))
 
-    def send(self, request):
+    async def send(self, request):
         """Send the given Request."""
 
-        return LiveRequest(self, request)
+        return await LiveRequest(self, request)
 
     def new_stream(self, live_request):
         """Reserve a new stream_id and begin tracking the given LiveRequest."""
@@ -48,11 +53,12 @@ class Connection:
         self.streams[stream_id] = live_request
         return stream_id
 
-    def read(self):
+    async def read(self):
         """Wait until data is available. Return a list of Responses finalized by that data."""
 
-        data = self.s.recv(65536 * 1024)
-        if not data:
+        try:
+            data = await self.s.receive(65536 * 1024)
+        except anyio.EndOfStream:
             return ()
 
         responses = []
@@ -69,40 +75,46 @@ class Connection:
             elif isinstance(event, h2.events.WindowUpdated):
                 if event.stream_id:
                     live_request = self.streams[event.stream_id]
-                    live_request.send_body()
+                    await live_request.send_body()
             elif isinstance(event, h2.events.StreamEnded):
                 live_request = self.streams.pop(event.stream_id)
                 responses.append(live_request.ended())
-        self.flush()
+        await self.flush()
         return responses
 
-    def flush(self):
+    async def flush(self):
         """Send any pending data to the server."""
 
-        self.s.sendall(self.c.data_to_send())
+        if (data := self.c.data_to_send()):
+            await self.s.send(data)
 
-    def close(self):
+    async def close(self):
         """Close the HTTP/2 connection, TLS session, and TCP socket."""
 
         self.c.close_connection()
-        self.flush()
-        self.s.close()
+        await self.flush()
+        await self.s.aclose()
 
 
 class LiveRequest:
     """A Request that's been sent over a Connection that hasn't received a StreamEnded yet."""
 
-    def __init__(self, connection, request):
+    async def __new__(cls, connection, request):  # pylint: disable=invalid-overridden-method
+        self = super().__new__(cls)
+        await self.__init__(connection, request)
+        return self
+
+    async def __init__(self, connection, request):
         self.connection = connection
         self.stream_id = connection.new_stream(self)
         self.request = request
         self.received_headers = None
         self.received = []
         self.tosend = request.body
-        self.send_headers()
-        self.send_body()
+        await self.send_headers()
+        await self.send_body()
 
-    def send_headers(self):
+    async def send_headers(self):
         """Send the request's headers."""
 
         end_stream = not self.tosend
@@ -110,9 +122,9 @@ class LiveRequest:
                                        self.request.headers.items(),
                                        end_stream=end_stream)
         if end_stream:
-            self.connection.flush()
+            await self.connection.flush()
 
-    def send_body(self):
+    async def send_body(self):
         """Send as much of the request's body as the stream's window allows."""
 
         while self.tosend and (window := self.connection.c.local_flow_control_window(
@@ -121,7 +133,7 @@ class LiveRequest:
             data = self.tosend[:limit]
             self.tosend = self.tosend[limit:]
             self.connection.c.send_data(self.stream_id, data, end_stream=not self.tosend)
-            self.connection.flush()
+            await self.connection.flush()
 
     def receive(self, data):
         """Store data received by a DataReceived."""

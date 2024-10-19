@@ -1,18 +1,22 @@
 """Tests for nh2.connection."""
 
+import pytest
+
 import nh2.connection
 import nh2.rex
 
+pytestmark = pytest.mark.anyio
 
-def test_simple():
+
+async def test_simple():
     """Basic functionality."""
 
-    conn = nh2.connection.Connection('httpbin.org', 443)
+    conn = await nh2.connection.Connection('httpbin.org', 443)
     try:
-        conn.request('GET', '/get?a=b')
+        await conn.request('GET', '/get?a=b')
         responses = None
         while not responses:
-            responses = conn.read()
+            responses = await conn.read()
         assert not conn.streams
         assert len(responses) == 1
         assert responses[0].status == 200
@@ -20,10 +24,10 @@ def test_simple():
         response = responses[0].json()
         assert response['args'] == {'a': 'b'}
 
-        conn.request('POST', '/post', json={'c': 'd'})
+        await conn.request('POST', '/post', json={'c': 'd'})
         responses = None
         while not responses:
-            responses = conn.read()
+            responses = await conn.read()
         assert not conn.streams
         assert len(responses) == 1
         assert responses[0].status == 200
@@ -31,10 +35,10 @@ def test_simple():
         response = responses[0].json()
         assert response['json'] == {'c': 'd'}
     finally:
-        conn.close()
+        await conn.close()
 
 
-def test_LiveRequest_send():  # pylint: disable=invalid-name
+async def test_LiveRequest_send():  # pylint: disable=invalid-name
     """Verify the body-chunking logic."""
 
     class MockH2Connection:  # pylint: disable=missing-class-docstring,missing-function-docstring
@@ -63,25 +67,25 @@ def test_LiveRequest_send():  # pylint: disable=invalid-name
             return 101
 
         @staticmethod
-        def flush():
+        async def flush():
             pass
 
     conn = MockConnection()
     request = nh2.rex.Request('POST', 'example.com', '/data', body='555557777777333')
 
-    live_request = nh2.connection.LiveRequest(conn, request)
+    live_request = await nh2.connection.LiveRequest(conn, request)
     assert conn.c.window == 0
     assert conn.c.sent == [b'55555']
     assert live_request.tosend == b'7777777333'
 
-    live_request.send_body()
+    await live_request.send_body()
     assert conn.c.window == 0
     assert conn.c.sent == [b'55555']
     assert live_request.tosend == b'7777777333'
 
     conn.c.window = 100
 
-    live_request.send_body()
+    await live_request.send_body()
     assert conn.c.window == 90
     assert conn.c.sent == [b'55555', b'7777777', b'333']
     assert live_request.tosend == b''
