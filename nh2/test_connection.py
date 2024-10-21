@@ -1,5 +1,6 @@
 """Tests for nh2.connection."""
 
+import anyio
 import pytest
 
 import nh2.connection
@@ -34,6 +35,19 @@ async def test_simple():
         assert responses[0].headers['content-type'] == 'application/json'
         response = responses[0].json()
         assert response['json'] == {'c': 'd'}
+    finally:
+        await conn.close()
+
+
+@pytest.mark.xfail
+async def test_concurrent():
+    """Verify the Connection can handle multiple concurrent sends."""
+
+    conn = await nh2.connection.Connection('httpbin.org', 443)
+    try:
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(conn.request, 'GET', '/get?a=1')
+            tg.start_soon(conn.request, 'GET', '/get?a=2')
     finally:
         await conn.close()
 
