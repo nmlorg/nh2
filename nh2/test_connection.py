@@ -39,7 +39,6 @@ async def test_simple():
         await conn.close()
 
 
-@pytest.mark.xfail
 async def test_concurrent():
     """Verify the Connection can handle multiple concurrent sends."""
 
@@ -74,6 +73,7 @@ async def test_LiveRequest_send():  # pylint: disable=invalid-name
             self.window -= len(data)
 
     class MockConnection:  # pylint: disable=missing-class-docstring,missing-function-docstring
+        h2_lock = anyio.Lock(fast_acquire=True)
         c = MockH2Connection()
 
         @staticmethod

@@ -26,14 +26,15 @@ class Connection:
 
     async def __init__(self, host, port):
         self.host = host
+        self.streams = {}
+        self.h2_lock = anyio.Lock(fast_acquire=True)
+
         self.s = await anyio.connect_tcp(host, port, ssl_context=ctx, tls_standard_compatible=False)
 
         self.c = h2.connection.H2Connection(config=h2.config.H2Configuration(
             header_encoding='utf8'))
         self.c.initiate_connection()
         await self.flush()
-
-        self.streams = {}
 
     async def request(self, method, path, *, headers=(), body=None, json=None):  # pylint: disable=too-many-arguments
         """Send a method request for path."""
@@ -61,26 +62,27 @@ class Connection:
         except anyio.EndOfStream:
             return ()
 
-        responses = []
-        for event in self.c.receive_data(data):
-            print(event)
-            if isinstance(event, h2.events.DataReceived):
-                # Update flow control so the server doesn't starve us.
-                self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
-                live_request = self.streams[event.stream_id]
-                live_request.receive(event.data)
-            elif isinstance(event, h2.events.ResponseReceived):
-                live_event = self.streams[event.stream_id]
-                live_event.received_headers = dict(event.headers)
-            elif isinstance(event, h2.events.WindowUpdated):
-                if event.stream_id:
+        async with self.h2_lock:
+            responses = []
+            for event in self.c.receive_data(data):
+                print(event)
+                if isinstance(event, h2.events.DataReceived):
+                    # Update flow control so the server doesn't starve us.
+                    self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
                     live_request = self.streams[event.stream_id]
-                    await live_request.send_body()
-            elif isinstance(event, h2.events.StreamEnded):
-                live_request = self.streams.pop(event.stream_id)
-                responses.append(live_request.ended())
-        await self.flush()
-        return responses
+                    live_request.receive(event.data)
+                elif isinstance(event, h2.events.ResponseReceived):
+                    live_event = self.streams[event.stream_id]
+                    live_event.received_headers = dict(event.headers)
+                elif isinstance(event, h2.events.WindowUpdated):
+                    if event.stream_id:
+                        live_request = self.streams[event.stream_id]
+                        await live_request.send_body()
+                elif isinstance(event, h2.events.StreamEnded):
+                    live_request = self.streams.pop(event.stream_id)
+                    responses.append(live_request.ended())
+            await self.flush()
+            return responses
 
     async def flush(self):
         """Send any pending data to the server."""
@@ -91,9 +93,10 @@ class Connection:
     async def close(self):
         """Close the HTTP/2 connection, TLS session, and TCP socket."""
 
-        self.c.close_connection()
-        await self.flush()
-        await self.s.aclose()
+        async with self.h2_lock:
+            self.c.close_connection()
+            await self.flush()
+            await self.s.aclose()
 
 
 class LiveRequest:
@@ -106,13 +109,14 @@ class LiveRequest:
 
     async def __init__(self, connection, request):
         self.connection = connection
-        self.stream_id = connection.new_stream(self)
         self.request = request
         self.received_headers = None
         self.received = []
         self.tosend = request.body
-        await self.send_headers()
-        await self.send_body()
+        async with connection.h2_lock:
+            self.stream_id = connection.new_stream(self)
+            await self.send_headers()
+            await self.send_body()
 
     async def send_headers(self):
         """Send the request's headers."""
