@@ -14,32 +14,29 @@ async def test_simple():
 
     conn = await nh2.connection.Connection('httpbin.org', 443)
     try:
-        await conn.request('GET', '/get?a=b')
-        responses = None
-        while not responses:
-            responses = await conn.read()
         assert not conn.streams
-        assert len(responses) == 1
-        assert responses[0].status == 200
-        assert responses[0].headers['content-type'] == 'application/json'
-        response = responses[0].json()
-        assert response['args'] == {'a': 'b'}
+        live_request = await conn.request('GET', '/get?a=b')
+        assert len(conn.streams) == 1
+        response = await live_request.wait()
+        assert not conn.streams
+        assert response.status == 200
+        assert response.headers['content-type'] == 'application/json'
+        data = response.json()
+        assert data['args'] == {'a': 'b'}
 
-        await conn.request('POST', '/post', json={'c': 'd'})
-        responses = None
-        while not responses:
-            responses = await conn.read()
+        live_request = await conn.request('POST', '/post', json={'c': 'd'})
+        assert len(conn.streams) == 1
+        response = await live_request.wait()
         assert not conn.streams
-        assert len(responses) == 1
-        assert responses[0].status == 200
-        assert responses[0].headers['content-type'] == 'application/json'
-        response = responses[0].json()
-        assert response['json'] == {'c': 'd'}
+        assert response.status == 200
+        assert response.headers['content-type'] == 'application/json'
+        data = response.json()
+        assert data['json'] == {'c': 'd'}
     finally:
         await conn.close()
 
 
-async def test_concurrent():
+async def test_concurrent_send():
     """Verify the Connection can handle multiple concurrent sends."""
 
     conn = await nh2.connection.Connection('httpbin.org', 443)
@@ -47,6 +44,45 @@ async def test_concurrent():
         async with anyio.create_task_group() as tg:
             tg.start_soon(conn.request, 'GET', '/get?a=1')
             tg.start_soon(conn.request, 'GET', '/get?a=2')
+    finally:
+        await conn.close()
+
+
+async def test_concurrent_wait():
+    """Verify the interaction between two concurrent LiveRequest.wait()s."""
+
+    conn = await nh2.connection.Connection('httpbin.org', 443)
+    try:
+        res1 = res2 = None
+
+        async with anyio.create_task_group() as tg:
+            assert not conn.streams
+            req1 = await conn.request('GET', '/get?a=b')
+            assert len(conn.streams) == 1
+            req2 = await conn.request('POST', '/post', json={'c': 'd'})
+            assert len(conn.streams) == 2
+
+            async def run_req1():
+                nonlocal res1
+                res1 = await req1.wait()
+
+            tg.start_soon(run_req1)
+
+            async def run_req2():
+                nonlocal res2
+                res2 = await req2.wait()
+
+            tg.start_soon(run_req2)
+
+        assert res1.status == 200
+        assert res1.headers['content-type'] == 'application/json'
+        data = res1.json()
+        assert data['args'] == {'a': 'b'}
+
+        assert res2.status == 200
+        assert res2.headers['content-type'] == 'application/json'
+        data = res2.json()
+        assert data['json'] == {'c': 'd'}
     finally:
         await conn.close()
 

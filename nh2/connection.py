@@ -26,6 +26,7 @@ class Connection:
 
     async def __init__(self, host, port):
         self.host = host
+        self.running = False
         self.streams = {}
         self.h2_lock = anyio.Lock(fast_acquire=True)
 
@@ -63,9 +64,7 @@ class Connection:
             return ()
 
         async with self.h2_lock:
-            responses = []
             for event in self.c.receive_data(data):
-                print(event)
                 if isinstance(event, h2.events.DataReceived):
                     # Update flow control so the server doesn't starve us.
                     self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
@@ -80,9 +79,8 @@ class Connection:
                         await live_request.send_body()
                 elif isinstance(event, h2.events.StreamEnded):
                     live_request = self.streams.pop(event.stream_id)
-                    responses.append(live_request.ended())
+                    live_request.ended()
             await self.flush()
-            return responses
 
     async def flush(self):
         """Send any pending data to the server."""
@@ -99,7 +97,7 @@ class Connection:
             await self.s.aclose()
 
 
-class LiveRequest:
+class LiveRequest:  # pylint: disable=too-many-instance-attributes
     """A Request that's been sent over a Connection that hasn't received a StreamEnded yet."""
 
     async def __new__(cls, connection, request):  # pylint: disable=invalid-overridden-method
@@ -113,6 +111,8 @@ class LiveRequest:
         self.received_headers = None
         self.received = []
         self.tosend = request.body
+        self.event = None
+        self.response = None
         async with connection.h2_lock:
             self.stream_id = connection.new_stream(self)
             await self.send_headers()
@@ -147,5 +147,31 @@ class LiveRequest:
     def ended(self):
         """Mark the request as being finalized."""
 
-        return nh2.rex.Response(self.request, self.received_headers,
-                                b''.join(self.received).decode('utf8'))
+        self.response = nh2.rex.Response(self.request, self.received_headers,
+                                         b''.join(self.received).decode('utf8'))
+        if self.event:
+            self.event.set()
+
+    async def wait(self):
+        """Wait until self.ended is called (running the connection loop if nobody else is)."""
+
+        while True:
+            if self.response:
+                return self.response
+
+            if self.connection.running:
+                if not self.event:
+                    self.event = anyio.Event()
+                await self.event.wait()
+                self.event = None
+            else:
+                self.connection.running = True
+                while True:
+                    await self.connection.read()
+                    if self.response:
+                        self.connection.running = False
+                        for live_request in self.connection.streams.values():
+                            if live_request.event and not live_request.event.is_set():
+                                live_request.event.set()
+                                break
+                        return self.response
