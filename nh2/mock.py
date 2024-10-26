@@ -92,13 +92,13 @@ class MockServer:
         try:
             data = await self.s.receive(65536 * 1024)
         except anyio.EndOfStream:
-            return
+            return '\nSOCKET CLOSED\n'
 
         events = self.c.receive_data(data)
         await self.flush()
         if not events:
             return ''
-        return f'{_format(events)}\n'
+        return f'\n{_format(events).strip()}\n'
 
     async def flush(self):
         """Send any pending data to the client."""

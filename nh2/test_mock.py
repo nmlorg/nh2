@@ -44,6 +44,21 @@ async def test_simple():
 
     response = await live_request.wait()
     assert response.body == 'dummy response'
+    assert await mock_server.read() == """
+- [SettingsAcknowledged]
+  changed_settings:
+"""
+
+    await conn.close()
+    assert await mock_server.read() == """
+- [ConnectionTerminated]
+  additional_data: None
+  error_code: <ErrorCodes.NO_ERROR: 0>
+  last_stream_id: 0
+"""
+    assert await mock_server.read() == """
+SOCKET CLOSED
+"""
 
 
 async def test_opaque_workflow():
