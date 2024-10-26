@@ -14,7 +14,10 @@ async def test_simple():
 
     mock_server = await nh2.mock.expect_connect('example.com', 443)
     conn = await nh2.connection.Connection('example.com', 443)
-    assert await mock_server.read() == nh2.mock.CONNECTION_EVENT
+    assert await mock_server.read() == """
+- [RemoteSettingsChanged]
+  header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536
+"""
 
     live_request = await conn.request('POST', '/dummy', json={'a': 1})
     assert await mock_server.read() == """
@@ -75,7 +78,10 @@ async def test_opaque_workflow():
         mock_server = await nh2.mock.expect_connect('example.com', 443)
         future = tg.start_soon(opaque_workflow)
 
-        assert await mock_server.read() == nh2.mock.CONNECTION_EVENT
+        assert await mock_server.read() == """
+- [RemoteSettingsChanged]
+  header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536
+"""
 
         assert await mock_server.read() == """
 - [RequestReceived]

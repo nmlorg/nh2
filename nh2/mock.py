@@ -1,7 +1,9 @@
 """Utilities to control nh2 during tests."""
 
 import anyio
-import h2
+import h2.config
+import h2.connection
+import h2.events
 
 import nh2.anyio_util
 import nh2.connection
@@ -19,41 +21,6 @@ async def expect_connect(host, port, *, live=False):
         server = await MockServer(host, port)
     _servers[host, port] = server
     return server
-
-
-# The standard initial response after a connection is established.
-CONNECTION_EVENT = """
-- [RemoteSettingsChanged]
-  changed_settings:
-    1: [ChangedSetting]
-      new_value: 4096
-      original_value: 4096
-      setting: <SettingCodes.HEADER_TABLE_SIZE: 1>
-    2: [ChangedSetting]
-      new_value: 1
-      original_value: 1
-      setting: <SettingCodes.ENABLE_PUSH: 2>
-    3: [ChangedSetting]
-      new_value: 100
-      original_value: None
-      setting: <SettingCodes.MAX_CONCURRENT_STREAMS: 3>
-    4: [ChangedSetting]
-      new_value: 65535
-      original_value: 65535
-      setting: <SettingCodes.INITIAL_WINDOW_SIZE: 4>
-    5: [ChangedSetting]
-      new_value: 16384
-      original_value: 16384
-      setting: <SettingCodes.MAX_FRAME_SIZE: 5>
-    6: [ChangedSetting]
-      new_value: 65536
-      original_value: None
-      setting: <SettingCodes.MAX_HEADER_LIST_SIZE: 6>
-    8: [ChangedSetting]
-      new_value: 0
-      original_value: 0
-      setting: <SettingCodes.ENABLE_CONNECT_PROTOCOL: 8>
-"""
 
 
 class MockConnection(nh2.connection.Connection):
@@ -78,7 +45,6 @@ class MockServer:
     async def __init__(self, host, port):
         self.host = host
         self.port = port
-        self.events = []
         self.client_pipe_end, self.s = nh2.anyio_util.create_pipe()
 
         self.c = h2.connection.H2Connection(
@@ -113,7 +79,11 @@ def _format(obj, indent=0):
 
 def _do_format(obj, indent):
     prefix = '  ' * indent
-    if isinstance(obj, dict):
+    if isinstance(obj, h2.events.RemoteSettingsChanged):
+        yield '[RemoteSettingsChanged]'
+        yield prefix + ' '.join(f'{setting.setting.name.lower()}={setting.new_value}'
+                                for setting in obj.changed_settings.values())
+    elif isinstance(obj, dict):
         yield ''
         for k, v in sorted(obj.items()):
             k = f'{k}'
