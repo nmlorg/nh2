@@ -4,6 +4,7 @@ import anyio
 import pytest
 
 import nh2.connection
+import nh2.mock
 import nh2.rex
 
 pytestmark = pytest.mark.anyio
@@ -12,6 +13,7 @@ pytestmark = pytest.mark.anyio
 async def test_simple():
     """Basic functionality."""
 
+    await nh2.mock.expect_connect('httpbin.org', 443, live=True)
     conn = await nh2.connection.Connection('httpbin.org', 443)
     try:
         assert not conn.streams
@@ -39,6 +41,7 @@ async def test_simple():
 async def test_concurrent_send():
     """Verify the Connection can handle multiple concurrent sends."""
 
+    await nh2.mock.expect_connect('httpbin.org', 443, live=True)
     conn = await nh2.connection.Connection('httpbin.org', 443)
     try:
         async with anyio.create_task_group() as tg:
@@ -51,6 +54,7 @@ async def test_concurrent_send():
 async def test_concurrent_wait():
     """Verify the interaction between two concurrent LiveRequest.wait()s."""
 
+    await nh2.mock.expect_connect('httpbin.org', 443, live=True)
     conn = await nh2.connection.Connection('httpbin.org', 443)
     try:
         res1 = res2 = None

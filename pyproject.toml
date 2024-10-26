@@ -12,6 +12,9 @@ dependencies = [
     'h2',
 ]
 
+[project.entry-points.pytest11]
+nh2 = 'nh2._pytest_plugin'
+
 [project.optional-dependencies]
 dev = [
     'pylint',

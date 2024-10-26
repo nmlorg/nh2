@@ -1,4 +1,4 @@
-"""An HTTP/2 connection."""
+"""An HTTP/2 client connection."""
 
 import socket
 import ssl
@@ -17,7 +17,7 @@ ctx.set_alpn_protocols(['h2'])
 
 
 class Connection:
-    """An HTTP/2 connection."""
+    """An HTTP/2 client connection."""
 
     async def __new__(cls, host, port):  # pylint: disable=invalid-overridden-method
         self = super().__new__(cls)
@@ -30,12 +30,15 @@ class Connection:
         self.streams = {}
         self.h2_lock = anyio.Lock(fast_acquire=True)
 
-        self.s = await anyio.connect_tcp(host, port, ssl_context=ctx, tls_standard_compatible=False)
+        self.s = await self._connect(host, port)
 
         self.c = h2.connection.H2Connection(config=h2.config.H2Configuration(
             header_encoding='utf8'))
         self.c.initiate_connection()
         await self.flush()
+
+    async def _connect(self, host, port):
+        return await anyio.connect_tcp(host, port, ssl_context=ctx, tls_standard_compatible=False)
 
     async def request(self, method, path, *, headers=(), body=None, json=None):  # pylint: disable=too-many-arguments
         """Send a method request for path."""
@@ -56,7 +59,7 @@ class Connection:
         return stream_id
 
     async def read(self):
-        """Wait until data is available. Return a list of Responses finalized by that data."""
+        """Wait until data is available."""
 
         try:
             data = await self.s.receive(65536 * 1024)
