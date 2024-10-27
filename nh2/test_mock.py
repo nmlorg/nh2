@@ -15,31 +15,31 @@ async def test_simple():
     mock_server = await nh2.mock.expect_connect('example.com', 443)
     conn = await nh2.connection.Connection('example.com', 443)
     assert await mock_server.read() == """
-- [RemoteSettingsChanged]
-  header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536
-"""
+      - [RemoteSettingsChanged]
+        header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536
+    """
 
     live_request = await conn.request('POST', '/dummy', json={'a': 1})
     assert await mock_server.read() == """
-- [RequestReceived]
-  headers:
-    - (':method', 'POST')
-    - (':path', '/dummy')
-    - (':authority', 'example.com')
-    - (':scheme', 'https')
-    - ('content-type', 'application/json; charset=utf-8')
-  priority_updated: None
-  stream_ended: None
-  stream_id: 1
-- [DataReceived]
-  data: b'{"a":1}'
-  flow_controlled_length: 7
-  stream_ended: [StreamEnded]
-    stream_id: 1
-  stream_id: 1
-- [StreamEnded]
-  stream_id: 1
-"""
+      - [RequestReceived]
+        headers:
+          - (':method', 'POST')
+          - (':path', '/dummy')
+          - (':authority', 'example.com')
+          - (':scheme', 'https')
+          - ('content-type', 'application/json; charset=utf-8')
+        priority_updated: None
+        stream_ended: None
+        stream_id: 1
+      - [DataReceived]
+        data: b'{"a":1}'
+        flow_controlled_length: 7
+        stream_ended: [StreamEnded]
+          stream_id: 1
+        stream_id: 1
+      - [StreamEnded]
+        stream_id: 1
+    """
 
     mock_server.c.send_headers(1, [(':status', '200')])
     mock_server.c.send_data(1, b'dummy response', end_stream=True)
@@ -48,20 +48,20 @@ async def test_simple():
     response = await live_request.wait()
     assert response.body == 'dummy response'
     assert await mock_server.read() == """
-- [SettingsAcknowledged]
-  changed_settings:
-"""
+      - [SettingsAcknowledged]
+        changed_settings:
+    """
 
     await conn.close()
     assert await mock_server.read() == """
-- [ConnectionTerminated]
-  additional_data: None
-  error_code: <ErrorCodes.NO_ERROR: 0>
-  last_stream_id: 0
-"""
+      - [ConnectionTerminated]
+        additional_data: None
+        error_code: <ErrorCodes.NO_ERROR: 0>
+        last_stream_id: 0
+    """
     assert await mock_server.read() == """
-SOCKET CLOSED
-"""
+      SOCKET CLOSED
+    """
 
 
 async def test_opaque_workflow():
@@ -79,24 +79,24 @@ async def test_opaque_workflow():
         future = tg.start_soon(opaque_workflow)
 
         assert await mock_server.read() == """
-- [RemoteSettingsChanged]
-  header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536
-"""
+          - [RemoteSettingsChanged]
+            header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536
+        """
 
         assert await mock_server.read() == """
-- [RequestReceived]
-  headers:
-    - (':method', 'GET')
-    - (':path', '/dummy')
-    - (':authority', 'example.com')
-    - (':scheme', 'https')
-  priority_updated: None
-  stream_ended: [StreamEnded]
-    stream_id: 1
-  stream_id: 1
-- [StreamEnded]
-  stream_id: 1
-"""
+          - [RequestReceived]
+            headers:
+              - (':method', 'GET')
+              - (':path', '/dummy')
+              - (':authority', 'example.com')
+              - (':scheme', 'https')
+            priority_updated: None
+            stream_ended: [StreamEnded]
+              stream_id: 1
+            stream_id: 1
+          - [StreamEnded]
+            stream_id: 1
+        """
 
         mock_server.c.send_headers(1, [(':status', '200')])
         mock_server.c.send_data(1, b'dummy response', end_stream=True)

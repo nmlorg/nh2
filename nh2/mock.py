@@ -1,5 +1,7 @@
 """Utilities to control nh2 during tests."""
 
+import textwrap
+
 import anyio
 import h2.config
 import h2.connection
@@ -58,13 +60,13 @@ class MockServer:
         try:
             data = await self.s.receive(65536 * 1024)
         except anyio.EndOfStream:
-            return '\nSOCKET CLOSED\n'
+            return _DedentingString('SOCKET CLOSED')
 
         events = self.c.receive_data(data)
         await self.flush()
         if not events:
             return ''
-        return f'\n{_format(events).strip()}\n'
+        return _DedentingString(_format(events).strip())
 
     async def flush(self):
         """Send any pending data to the client."""
@@ -97,3 +99,9 @@ def _do_format(obj, indent):
         yield f'{repr(obj)}'
     else:
         yield f'[{obj.__class__.__qualname__}] {_format(obj.__dict__, indent)}'
+
+
+class _DedentingString(str):
+
+    def __eq__(self, rhs):
+        return super().__eq__(textwrap.dedent(rhs).strip('\n'))
