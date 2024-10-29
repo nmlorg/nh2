@@ -15,30 +15,27 @@ async def test_simple():
     mock_server = await nh2.mock.expect_connect('example.com', 443)
     conn = await nh2.connection.Connection('example.com', 443)
     assert await mock_server.read() == """
-      - [RemoteSettingsChanged]
-        header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536
+      - [RemoteSettingsChanged header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536]
     """
 
     live_request = await conn.request('POST', '/dummy', json={'a': 1})
     assert await mock_server.read() == """
       - [RequestReceived]
+        stream_id: 1
         headers:
           - (':method', 'POST')
           - (':path', '/dummy')
           - (':authority', 'example.com')
           - (':scheme', 'https')
           - ('content-type', 'application/json; charset=utf-8')
-        priority_updated: None
         stream_ended: None
-        stream_id: 1
+        priority_updated: None
       - [DataReceived]
+        stream_id: 1
         data: b'{"a":1}'
         flow_controlled_length: 7
-        stream_ended: [StreamEnded]
-          stream_id: 1
-        stream_id: 1
-      - [StreamEnded]
-        stream_id: 1
+        stream_ended: [StreamEnded stream_id=1]
+      - [StreamEnded stream_id=1]
     """
 
     mock_server.c.send_headers(1, [(':status', '200')])
@@ -49,15 +46,12 @@ async def test_simple():
     assert response.body == 'dummy response'
     assert await mock_server.read() == """
       - [SettingsAcknowledged]
-        changed_settings:
+        changed_settings: []
     """
 
     await conn.close()
     assert await mock_server.read() == """
-      - [ConnectionTerminated]
-        additional_data: None
-        error_code: <ErrorCodes.NO_ERROR: 0>
-        last_stream_id: 0
+      - [ConnectionTerminated error_code=<ErrorCodes.NO_ERROR: 0> last_stream_id=0 additional_data=None]
     """
     assert await mock_server.read() == """
       SOCKET CLOSED
@@ -79,23 +73,20 @@ async def test_opaque_workflow():
         future = tg.start_soon(opaque_workflow)
 
         assert await mock_server.read() == """
-          - [RemoteSettingsChanged]
-            header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536
+          - [RemoteSettingsChanged header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536]
         """
 
         assert await mock_server.read() == """
           - [RequestReceived]
+            stream_id: 1
             headers:
               - (':method', 'GET')
               - (':path', '/dummy')
               - (':authority', 'example.com')
               - (':scheme', 'https')
+            stream_ended: [StreamEnded stream_id=1]
             priority_updated: None
-            stream_ended: [StreamEnded]
-              stream_id: 1
-            stream_id: 1
-          - [StreamEnded]
-            stream_id: 1
+          - [StreamEnded stream_id=1]
         """
 
         mock_server.c.send_headers(1, [(':status', '200')])

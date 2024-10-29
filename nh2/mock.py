@@ -75,30 +75,66 @@ class MockServer:
             await self.s.send(data)
 
 
-def _format(obj, indent=0):
-    return '\n'.join(_do_format(obj, indent)).replace(' \n', '\n')
+def _format(obj):
+    return ''.join(_do_format(obj, 0))
 
 
-def _do_format(obj, indent):
+def _simple(obj):
+    return obj is None or isinstance(obj, (bytes, int, str))
+
+
+def _do_format(obj, indent, name=''):  # pylint: disable=too-many-branches
     prefix = '  ' * indent
-    if isinstance(obj, h2.events.RemoteSettingsChanged):
-        yield '[RemoteSettingsChanged]'
-        yield prefix + ' '.join(f'{setting.setting.name.lower()}={setting.new_value}'
-                                for setting in obj.changed_settings.values())
-    elif isinstance(obj, dict):
-        yield ''
-        for k, v in sorted(obj.items()):
-            k = f'{k}'
+
+    if isinstance(obj, dict):
+        multiline = False
+        items = []
+        for k, v in obj.items():
             if not k.startswith('_'):
-                yield f'{prefix}{k}: {_format(v, indent + 1)}'
+                items.append((k, v))
+                if not multiline and not _simple(v):
+                    multiline = True
+        if not multiline:
+            yield ' ['
+            if name:
+                yield f'{name} '
+            yield ' '.join(f'{k}={repr(v)}' for k, v in items) + ']\n'
+        else:
+            if name:
+                yield f' [{name}]'
+            yield '\n'
+            for k, v in items:
+                yield f'{prefix}{k}:'
+                yield from _do_format(v, indent + 1)
     elif isinstance(obj, list):
-        yield ''
+        multiline = False
         for v in obj:
-            yield f'{prefix}- {_format(v, indent + 1)}'
-    elif obj is None or isinstance(obj, (bytes, int, str, tuple)):
-        yield f'{repr(obj)}'
+            if not _simple(v):
+                multiline = True
+                break
+        if not multiline:
+            yield ' ['
+            if name:
+                yield f'{name} '
+            yield ' '.join(repr(v) for v in obj) + ']\n'
+        else:
+            if name:
+                yield f' [{name}]'
+            yield '\n'
+            for v in obj:
+                yield f'{prefix}-'
+                yield from _do_format(v, indent + 1)
+    elif _simple(obj) or isinstance(obj, tuple):
+        if name:
+            name = f'[{name}] '
+        yield f' {name}{repr(obj)}\n'
     else:
-        yield f'[{obj.__class__.__qualname__}] {_format(obj.__dict__, indent)}'
+        name = obj.__class__.__qualname__
+        if isinstance(obj, h2.events.RemoteSettingsChanged):
+            obj = {chg.setting.name.lower(): chg.new_value for chg in obj.changed_settings.values()}
+        else:
+            obj = obj.__dict__
+        yield from _do_format(obj, indent, name=name)
 
 
 class _DedentingString(str):
