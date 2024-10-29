@@ -28,12 +28,20 @@ async def expect_connect(host, port, *, live=False):
 class MockConnection(nh2.connection.Connection):
     """An HTTP/2 client that connects to a previously prepared MockServer."""
 
+    mock_server = None
+
     async def _connect(self, host, port):
         mock_server = _servers.pop((host, port))
         if mock_server is True:
             return await super()._connect(host, port)
         self.mock_server = mock_server
         return self.mock_server.client_pipe_end
+
+    def _receive_data(self, data):
+        events = super()._receive_data(data)
+        if self.mock_server:
+            self.mock_server.client_events.append(events)
+        return events
 
 
 class MockServer:
@@ -48,6 +56,7 @@ class MockServer:
         self.host = host
         self.port = port
         self.client_pipe_end, self.s = nh2.anyio_util.create_pipe()
+        self.client_events = []
 
         self.c = h2.connection.H2Connection(
             config=h2.config.H2Configuration(client_side=False, header_encoding='utf8'))
@@ -66,7 +75,16 @@ class MockServer:
         await self.flush()
         if not events:
             return ''
-        return _DedentingString(_format(events).strip())
+        return _DedentingString(_format(events))
+
+    def get_client_events(self):
+        """Return a string representing any h2 events recently received by the connected client."""
+
+        events = self.client_events
+        if not events:
+            return ''
+        self.client_events = []
+        return _DedentingString(_format(events))
 
     async def flush(self):
         """Send any pending data to the client."""
@@ -76,7 +94,7 @@ class MockServer:
 
 
 def _format(obj):
-    return ''.join(_do_format(obj, 0))
+    return ''.join(_do_format(obj, 0)).strip()
 
 
 def _simple(obj):

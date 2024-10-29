@@ -67,7 +67,7 @@ class Connection:
             return ()
 
         async with self.h2_lock:
-            for event in self.c.receive_data(data):
+            for event in self._receive_data(data):
                 if isinstance(event, h2.events.DataReceived):
                     # Update flow control so the server doesn't starve us.
                     self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
@@ -84,6 +84,9 @@ class Connection:
                     live_request = self.streams.pop(event.stream_id)
                     live_request.ended()
             await self.flush()
+
+    def _receive_data(self, data):
+        return self.c.receive_data(data)
 
     async def flush(self):
         """Send any pending data to the server."""
