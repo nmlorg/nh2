@@ -1,5 +1,6 @@
 """Utilities to control nh2 during tests."""
 
+import contextlib
 import textwrap
 
 import anyio
@@ -13,6 +14,7 @@ import nh2.connection
 _servers = {}
 
 
+@contextlib.asynccontextmanager
 async def expect_connect(host, port, *, live=False):
     """Prepare for an upcoming attempt to connect to host:port."""
 
@@ -22,7 +24,10 @@ async def expect_connect(host, port, *, live=False):
     else:
         server = await MockServer(host, port)
     _servers[host, port] = server
-    return server
+    yield server
+    if (host, port) in _servers:
+        await anyio.sleep(.01)
+        assert (host, port) not in _servers
 
 
 class MockConnection(nh2.connection.Connection):

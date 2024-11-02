@@ -12,8 +12,8 @@ pytestmark = pytest.mark.anyio
 async def test_simple():
     """Manually run a complete connection and request."""
 
-    mock_server = await nh2.mock.expect_connect('example.com', 443)
-    conn = await nh2.connection.Connection('example.com', 443)
+    async with nh2.mock.expect_connect('example.com', 443) as mock_server:
+        conn = await nh2.connection.Connection('example.com', 443)
     # On connect, client and server each send settings, but client does not block to receive them.
     assert mock_server.get_client_events() == ''
     assert await mock_server.read() == """
@@ -105,8 +105,8 @@ async def test_opaque_workflow():
         return 'finished'
 
     async with nh2.anyio_util.create_task_group() as tg:
-        mock_server = await nh2.mock.expect_connect('example.com', 443)
-        future = tg.start_soon(opaque_workflow)
+        async with nh2.mock.expect_connect('example.com', 443) as mock_server:
+            future = tg.start_soon(opaque_workflow)
 
         assert await mock_server.read() == """
           - [RemoteSettingsChanged header_table_size=4096 enable_push=1 initial_window_size=65535 max_frame_size=16384 enable_connect_protocol=0 max_concurrent_streams=100 max_header_list_size=65536]
