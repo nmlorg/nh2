@@ -1,6 +1,5 @@
 """An HTTP/2 client connection."""
 
-import socket
 import ssl
 
 import anyio
@@ -11,7 +10,6 @@ import h2.events
 
 import nh2.rex
 
-socket.setdefaulttimeout(15)
 ctx = ssl.create_default_context(cafile=certifi.where())
 ctx.set_alpn_protocols(['h2'])
 
