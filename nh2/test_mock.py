@@ -23,7 +23,7 @@ async def test_simple():
     assert mock_server.get_client_events() == ''
 
     # On request, client sends request, data, and stream-end frames:
-    live_request = await conn.request('POST', '/dummy', json={'a': 1})
+    stream = await conn.request('POST', '/dummy', json={'a': 1})
     assert await mock_server.read() == """
       - [RequestReceived]
         stream_id: 1
@@ -50,7 +50,7 @@ async def test_simple():
     await mock_server.flush()
     assert mock_server.get_client_events() == ''
 
-    response = await live_request.wait()
+    response = await stream.wait()
     # When a request is awaited, client finally begins reading and dispatching data from server in a
     # loop (until it gets a stream-end for the request). Client finally sees server's on-connect
     # settings (which client acks) as well as server's ack of client's on-connect settings.
@@ -99,8 +99,8 @@ async def test_opaque_workflow():
 
     async def opaque_workflow():
         conn = await nh2.connection.Connection('example.com', 443)
-        live_request = await conn.request('GET', '/dummy')
-        response = await live_request.wait()
+        stream = await conn.request('GET', '/dummy')
+        response = await stream.wait()
         assert response.body == 'dummy response'
         return 'finished'
 

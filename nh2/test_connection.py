@@ -17,18 +17,18 @@ async def test_simple():
         conn = await nh2.connection.Connection('httpbin.org', 443)
     try:
         assert not conn.streams
-        live_request = await conn.request('GET', '/get?a=b')
+        stream = await conn.request('GET', '/get?a=b')
         assert len(conn.streams) == 1
-        response = await live_request.wait()
+        response = await stream.wait()
         assert not conn.streams
         assert response.status == 200
         assert response.headers['content-type'] == 'application/json'
         data = response.json()
         assert data['args'] == {'a': 'b'}
 
-        live_request = await conn.request('POST', '/post', json={'c': 'd'})
+        stream = await conn.request('POST', '/post', json={'c': 'd'})
         assert len(conn.streams) == 1
-        response = await live_request.wait()
+        response = await stream.wait()
         assert not conn.streams
         assert response.status == 200
         assert response.headers['content-type'] == 'application/json'
@@ -52,7 +52,7 @@ async def test_concurrent_send():
 
 
 async def test_concurrent_wait():
-    """Verify the interaction between two concurrent LiveRequest.wait()s."""
+    """Verify the interaction between two concurrent Stream.wait()s."""
 
     async with nh2.mock.expect_connect('httpbin.org', 443, live=True):
         conn = await nh2.connection.Connection('httpbin.org', 443)
@@ -91,7 +91,7 @@ async def test_concurrent_wait():
         await conn.close()
 
 
-async def test_LiveRequest_send():  # pylint: disable=invalid-name
+async def test_stream_send():
     """Verify the body-chunking logic."""
 
     class MockH2Connection:  # pylint: disable=missing-class-docstring,missing-function-docstring
@@ -117,7 +117,7 @@ async def test_LiveRequest_send():  # pylint: disable=invalid-name
         c = MockH2Connection()
 
         @staticmethod
-        def new_stream(unused_live_request):
+        def new_stream(unused_stream):
             return 101
 
         @staticmethod
@@ -127,19 +127,19 @@ async def test_LiveRequest_send():  # pylint: disable=invalid-name
     conn = MockConnection()
     request = nh2.rex.Request('POST', 'example.com', '/data', body='555557777777333')
 
-    live_request = await nh2.connection.LiveRequest(conn, request)
+    stream = await nh2.connection.Stream(conn, request)
     assert conn.c.window == 0
     assert conn.c.sent == [b'55555']
-    assert live_request.tosend == b'7777777333'
+    assert stream.tosend == b'7777777333'
 
-    await live_request.send_body()
+    await stream.send_body()
     assert conn.c.window == 0
     assert conn.c.sent == [b'55555']
-    assert live_request.tosend == b'7777777333'
+    assert stream.tosend == b'7777777333'
 
     conn.c.window = 100
 
-    await live_request.send_body()
+    await stream.send_body()
     assert conn.c.window == 90
     assert conn.c.sent == [b'55555', b'7777777', b'333']
-    assert live_request.tosend == b''
+    assert stream.tosend == b''

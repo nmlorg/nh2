@@ -47,13 +47,13 @@ class Connection:
     async def send(self, request):
         """Send the given Request."""
 
-        return await LiveRequest(self, request)
+        return await Stream(self, request)
 
-    def new_stream(self, live_request):
-        """Reserve a new stream_id and begin tracking the given LiveRequest."""
+    def new_stream(self, stream):
+        """Reserve a new stream_id and begin tracking the given Stream."""
 
         stream_id = self.c.get_next_available_stream_id()
-        self.streams[stream_id] = live_request
+        self.streams[stream_id] = stream
         return stream_id
 
     async def read(self):
@@ -61,26 +61,26 @@ class Connection:
 
         try:
             data = await self.s.receive(65536 * 1024)
-        except anyio.EndOfStream:
-            return ()
+        except anyio.EndOfStream:  # Note that this refers to the underlying TCP/TLS stream.
+            return
 
         async with self.h2_lock:
             for event in self._receive_data(data):
                 if isinstance(event, h2.events.DataReceived):
                     # Update flow control so the server doesn't starve us.
                     self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
-                    live_request = self.streams[event.stream_id]
-                    live_request.receive(event.data)
+                    stream = self.streams[event.stream_id]
+                    stream.receive(event.data)
                 elif isinstance(event, h2.events.ResponseReceived):
-                    live_event = self.streams[event.stream_id]
-                    live_event.received_headers = dict(event.headers)
+                    stream = self.streams[event.stream_id]
+                    stream.received_headers = dict(event.headers)
                 elif isinstance(event, h2.events.WindowUpdated):
                     if event.stream_id:
-                        live_request = self.streams[event.stream_id]
-                        await live_request.send_body()
+                        stream = self.streams[event.stream_id]
+                        await stream.send_body()
                 elif isinstance(event, h2.events.StreamEnded):
-                    live_request = self.streams.pop(event.stream_id)
-                    live_request.ended()
+                    stream = self.streams.pop(event.stream_id)
+                    stream.ended()
             await self.flush()
 
     def _receive_data(self, data):
@@ -101,7 +101,7 @@ class Connection:
             await self.s.aclose()
 
 
-class LiveRequest:  # pylint: disable=too-many-instance-attributes
+class Stream:  # pylint: disable=too-many-instance-attributes
     """A Request that's been sent over a Connection that hasn't received a StreamEnded yet."""
 
     async def __new__(cls, connection, request):  # pylint: disable=invalid-overridden-method
@@ -116,7 +116,7 @@ class LiveRequest:  # pylint: disable=too-many-instance-attributes
         self.received = []
         self.tosend = request.body
         self.event = None
-        self.response = None
+        self.value = None
         async with connection.h2_lock:
             self.stream_id = connection.new_stream(self)
             await self.send_headers()
@@ -151,8 +151,8 @@ class LiveRequest:  # pylint: disable=too-many-instance-attributes
     def ended(self):
         """Mark the request as being finalized."""
 
-        self.response = nh2.rex.Response(self.request, self.received_headers,
-                                         b''.join(self.received).decode('utf8'))
+        self.value = nh2.rex.Response(self.request, self.received_headers,
+                                      b''.join(self.received).decode('utf8'))
         if self.event:
             self.event.set()
 
@@ -160,8 +160,8 @@ class LiveRequest:  # pylint: disable=too-many-instance-attributes
         """Wait until self.ended is called (running the connection loop if nobody else is)."""
 
         while True:
-            if self.response:
-                return self.response
+            if self.value:
+                return self.value
 
             if self.connection.running:
                 if not self.event:
@@ -172,10 +172,10 @@ class LiveRequest:  # pylint: disable=too-many-instance-attributes
                 self.connection.running = True
                 while True:
                     await self.connection.read()
-                    if self.response:
+                    if self.value:
                         self.connection.running = False
-                        for live_request in self.connection.streams.values():
-                            if live_request.event and not live_request.event.is_set():
-                                live_request.event.set()
+                        for stream in self.connection.streams.values():
+                            if stream.event and not stream.event.is_set():
+                                stream.event.set()
                                 break
-                        return self.response
+                        return self.value
