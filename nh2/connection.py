@@ -26,7 +26,7 @@ class Connection:
         self.host = host
         self.running = False
         self.streams = {}
-        self.h2_lock = anyio.Lock(fast_acquire=True)
+        self._h2_lock = anyio.Lock(fast_acquire=True)
 
         self.s = await self._connect(host, port)
 
@@ -47,14 +47,10 @@ class Connection:
     async def send(self, request):
         """Send the given Request."""
 
-        return await Stream(self, request)
-
-    def new_stream(self, stream):
-        """Reserve a new stream_id and begin tracking the given Stream."""
-
-        stream_id = self.c.get_next_available_stream_id()
-        self.streams[stream_id] = stream
-        return stream_id
+        async with self._h2_lock:
+            stream_id = self.c.get_next_available_stream_id()
+            self.streams[stream_id] = stream = await Stream(self, stream_id, request)
+            return stream
 
     async def read(self):
         """Wait until data is available."""
@@ -64,16 +60,16 @@ class Connection:
         except anyio.EndOfStream:  # Note that this refers to the underlying TCP/TLS stream.
             return
 
-        async with self.h2_lock:
+        async with self._h2_lock:
             for event in self._receive_data(data):
                 if isinstance(event, h2.events.DataReceived):
                     # Update flow control so the server doesn't starve us.
                     self.c.acknowledge_received_data(event.flow_controlled_length, event.stream_id)
                     stream = self.streams[event.stream_id]
-                    stream.receive(event.data)
+                    stream.receive_data(event.data)
                 elif isinstance(event, h2.events.ResponseReceived):
                     stream = self.streams[event.stream_id]
-                    stream.received_headers = dict(event.headers)
+                    stream.receive_headers(event.headers)
                 elif isinstance(event, h2.events.WindowUpdated):
                     if event.stream_id:
                         stream = self.streams[event.stream_id]
@@ -95,7 +91,7 @@ class Connection:
     async def close(self):
         """Close the HTTP/2 connection, TLS session, and TCP socket."""
 
-        async with self.h2_lock:
+        async with self._h2_lock:
             self.c.close_connection()
             await self.flush()
             await self.s.aclose()
@@ -104,23 +100,22 @@ class Connection:
 class Stream:  # pylint: disable=too-many-instance-attributes
     """A Request that's been sent over a Connection that hasn't received a StreamEnded yet."""
 
-    async def __new__(cls, connection, request):  # pylint: disable=invalid-overridden-method
+    async def __new__(cls, connection, stream_id, request):  # pylint: disable=invalid-overridden-method
         self = super().__new__(cls)
-        await self.__init__(connection, request)
+        await self.__init__(connection, stream_id, request)
         return self
 
-    async def __init__(self, connection, request):
+    async def __init__(self, connection, stream_id, request):
         self.connection = connection
+        self.stream_id = stream_id
         self.request = request
         self.received_headers = None
-        self.received = []
+        self.received_data = []
         self.tosend = request.body
         self.event = None
         self.value = None
-        async with connection.h2_lock:
-            self.stream_id = connection.new_stream(self)
-            await self.send_headers()
-            await self.send_body()
+        await self.send_headers()
+        await self.send_body()
 
     async def send_headers(self):
         """Send the request's headers."""
@@ -143,16 +138,21 @@ class Stream:  # pylint: disable=too-many-instance-attributes
             self.connection.c.send_data(self.stream_id, data, end_stream=not self.tosend)
             await self.connection.flush()
 
-    def receive(self, data):
+    def receive_headers(self, headers):
+        """Store headers received by a ResponseReceived."""
+
+        self.received_headers = dict(headers)
+
+    def receive_data(self, data):
         """Store data received by a DataReceived."""
 
-        self.received.append(data)
+        self.received_data.append(data)
 
     def ended(self):
         """Mark the request as being finalized."""
 
         self.value = nh2.rex.Response(self.request, self.received_headers,
-                                      b''.join(self.received).decode('utf8'))
+                                      b''.join(self.received_data).decode('utf8'))
         if self.event:
             self.event.set()
 

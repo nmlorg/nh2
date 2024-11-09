@@ -113,12 +113,7 @@ async def test_stream_send():
             self.window -= len(data)
 
     class MockConnection:  # pylint: disable=missing-class-docstring,missing-function-docstring
-        h2_lock = anyio.Lock(fast_acquire=True)
         c = MockH2Connection()
-
-        @staticmethod
-        def new_stream(unused_stream):
-            return 101
 
         @staticmethod
         async def flush():
@@ -127,7 +122,7 @@ async def test_stream_send():
     conn = MockConnection()
     request = nh2.rex.Request('POST', 'example.com', '/data', body='555557777777333')
 
-    stream = await nh2.connection.Stream(conn, request)
+    stream = await nh2.connection.Stream(conn, 101, request)
     assert conn.c.window == 0
     assert conn.c.sent == [b'55555']
     assert stream.tosend == b'7777777333'
